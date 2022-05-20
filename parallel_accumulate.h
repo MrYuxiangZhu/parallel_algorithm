@@ -24,19 +24,19 @@ private:
     std::vector<std::thread>& threads;
 };
 
-template <typename Iterator, typename Type>
+template <typename Iterator, typename Type, typename Func>
 struct accumulate_block
 {
-    Type operator() (Iterator first, Iterator last)
+    Type operator() (Iterator first, Iterator last, Type init, Func func)
     {
-        return std::accumulate(first, last, Type());
+        return std::accumulate(first, last, init, func);
     }
 };
 
-template <typename Iterator, typename Type>
-Type parallel_accumulate(Iterator first, Iterator last, Type init)
+template <typename Iterator, typename Type, typename Func>
+Type parallel_accumulate(Iterator first, Iterator last, Type init, Func func)
 {
-    const unsigned long length = (unsigned long)std::distance(first, last);
+    const unsigned long length = static_cast<unsigned long>(std::distance(first, last));
 
     if (!length)
     {
@@ -59,22 +59,19 @@ Type parallel_accumulate(Iterator first, Iterator last, Type init)
     {
         Iterator block_end = block_start;
         std::advance(block_end, block_size);
-        std::packaged_task<Type(Iterator, Iterator)> task([](Iterator first, Iterator last) { return accumulate_block<Iterator, Type>()(first, last); });
+        std::packaged_task<Type(Iterator, Iterator, Type, Func)> task([=](Iterator first, Iterator last, Type init, Func func) { return accumulate_block<Iterator, Type, Func>()(first, last, init, func); });
         futures[i] = task.get_future();
-        threads[i] = std::thread(std::move(task), block_start, block_end);
+        threads[i] = std::thread(std::move(task), block_start, block_end, init, func);
         block_start = block_end;
     }
 
-    Type last_result = accumulate_block<Iterator, Type>()(block_start, last);
-    //std::for_each(threads.begin(), threads.end(), std::mem_fn(&std::thread::join));
-
+    Type last_result = accumulate_block<Iterator, Type, Func>()(block_start, last, init, func);
     Type result = init;
 
     for (auto& iter : futures)
     {
-        result += iter.get();
+        result = func(result, iter.get());
     }
 
-    result += last_result;
-    return result;
+    return func(result, last_result);
 }
