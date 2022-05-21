@@ -43,7 +43,7 @@ Type parallel_accumulate(Iterator first, Iterator last, Type init, Func func)
         return init;
     }
 
-    const unsigned long min_per_thread = 25;
+    const unsigned long min_per_thread = 12;
     const unsigned long max_threads = (length + min_per_thread - 1) / min_per_thread;
     const unsigned long hardware_threads = std::thread::hardware_concurrency();
     const unsigned long num_threads = std::min(hardware_threads != 0 ? hardware_threads : 2, max_threads);
@@ -66,12 +66,33 @@ Type parallel_accumulate(Iterator first, Iterator last, Type init, Func func)
     }
 
     Type last_result = accumulate_block<Iterator, Type, Func>()(block_start, last, init, func);
-    Type result = init;
 
     for (auto& iter : futures)
     {
-        result = func(result, iter.get());
+        last_result = func(iter.get(), last_result);
     }
 
-    return func(result, last_result);
+    return last_result;
 }
+
+template <typename Iterator, typename Type>
+Type parallel_plus(Iterator first, Iterator last, Type init)
+{
+    Type result = parallel_accumulate(first, last, Type(0), std::plus<Type>{ });
+    return result + init;
+}
+
+template <typename Iterator, typename Type>
+Type parallel_minus(Iterator first, Iterator last, Type init)
+{
+    Type result = parallel_accumulate(first, last, Type(0), std::plus<Type>{ });
+    return init - result;
+}
+
+template <typename Iterator, typename Type>
+Type parallel_multiplies(Iterator first, Iterator last, Type init)
+{
+    Type result = parallel_accumulate(first, last, Type(1), std::multiplies<Type>{ });
+    return result * init;
+}
+
